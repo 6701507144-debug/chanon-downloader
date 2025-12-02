@@ -120,26 +120,15 @@ def get_format_string(quality_selection):
         return 'bestvideo+bestaudio/best'
 
 def handle_link_generator(video_url, quality):
-    """ดึง Direct Link (แก้ไขเรื่อง None)"""
-    
-    # ⚠️ แก้ไข Logic: สำหรับ Link Generator ห้ามใช้เครื่องหมาย '+' (การรวมไฟล์)
-    # เราต้องหา 'ไฟล์เดี่ยว' (Single File) ที่ดีที่สุดเท่านั้น ไม่งั้นจะได้ None
-    if "Audio" in quality:
-        format_str = 'bestaudio/best'
-    elif "1080p" in quality:
-        # พยายามหา 1080p ที่เป็นไฟล์เดียว (ถ้าไม่มีระบบจะถอยไป 720p ให้เอง)
-        format_str = 'best[height<=1080]/best'
-    elif "720p" in quality:
-        format_str = 'best[height<=720]/best'
-    else:
-        format_str = 'best'
+    """ดึง Direct Link โดยไม่ต้องโหลดไฟล์ลงเครื่อง"""
+    format_str = get_format_string(quality)
     
     ydl_opts = {
         'format': format_str,
         'quiet': True,
         'no_warnings': True,
         'user_agent': get_random_user_agent(),
-        'skip_download': True, # ไม่โหลดไฟล์
+        'skip_download': True, # สำคัญ: ไม่โหลดไฟล์
     }
     
     # ใส่ Cookie ถ้ามี
@@ -150,27 +139,24 @@ def handle_link_generator(video_url, quality):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
             
-            # กรณีเป็น Playlist
+            # กรณีเป็น Playlist หรือมีหลาย Format
             if 'entries' in info:
                 info = info['entries'][0]
-            
-            # ⚠️ จุดแก้สำคัญ: ถ้าหา 'url' ตรงๆ ไม่เจอ ให้ไปขุดหาใน formats
-            final_url = info.get('url', None)
-            
-            # ถ้ายัง None อยู่ (บางที yt-dlp เก็บ url ไว้ลึกกว่านั้น)
-            if final_url is None and 'requested_formats' in info:
-                 # กรณีนี้มักเกิดจากมันเจอไฟล์แยกภาพเสียง ให้เอาลิงก์ภาพมาแสดงแทน
-                 final_url = info['requested_formats'][0].get('url', None)
-
+                
             return {
                 "success": True,
                 "title": info.get('title', 'Unknown'),
-                "url": final_url if final_url else "ไม่พบลิงก์ตรง (ลองเปลี่ยนคุณภาพเป็น Best Available)",
+                "url": info.get('url', None),
                 "ext": info.get('ext', 'mp4'),
                 "thumbnail": info.get('thumbnail', None)
             }
     except Exception as e:
-        return {"success": False, "error": str(e)}    
+        return {"success": False, "error": str(e)}
+
+def handle_server_download(video_url, quality, ffmpeg_ready):
+    """ดาวน์โหลดไฟล์ลง Server แล้วส่งให้ user"""
+    format_str = get_format_string(quality)
+    
     # ตั้งชื่อไฟล์ output
     output_template = os.path.join(DOWNLOAD_FOLDER, '%(title)s.%(ext)s')
     
